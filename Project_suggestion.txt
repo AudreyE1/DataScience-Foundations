@@ -1,0 +1,9 @@
+There are 2 main schools of thought in the Financial Markets with respect to pricing of stock - Technical Analysis and Fundamental Analysis. Technical Analysis tend to use charts and other tools to identify price patterns to predict price movements whereas Fundamental Analysis looks at economic factors. Technical analysis tend to believe that the price of a stock reflects the underlying fundamental factors and make wide use of market indicators, some of which are based on price, volume and other inputs. These indicators help to decide the likely direction of price movement.
+
+This project will focus upon Techbical Analysis in the Currency market looking particularly at the GBP / EUR pair e.g. the dataset taken from https://www.quandl.com/data/BOE/XUDLERS-Spot-exchange-rate-Euro-into-Sterling. Particular attention will be paid to Moving Average indicator.
+
+  
+
+
+ 
+
