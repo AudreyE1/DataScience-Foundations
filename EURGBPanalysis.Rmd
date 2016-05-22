@@ -1,0 +1,291 @@
+---
+title: "Analysis of the EUR/GBP  currency pair"
+author: "Audrey Ekuban"
+date: "18 May 2016"
+output: html_document
+---
+
+The euro British pound (EUR/GBP, EURGBP) is a currency pairing whereby the euro and the pound are traded against each other. You short (sell) the euro and go long (buy) the pound or go long (buy) the euro and short (sell) the pound. The EUR/GBP is one of the most traded currency pairs and also, one of the most stable (though that may change). EUR is the base currency. So EURGBP = 0.8 means that 1 EUR is exchanged for 0.8 GBP. If the EURGBP rises to 0.85 then GBP is weakening against EUR.
+
+
+
+# Step 1 - Download the data 
+
+I downloaded currency data from www.forexite.com.The website provides free intraday data for 16 currencies. The data goes back to 2001. The R script below was used to download and unzip the data files.
+
+```{r eval=FALSE}
+# Download currency data from forexite.com
+
+getFiles <- function(URL) {
+  zipfile = unlist(strsplit(URL, "/")[[1]])[7]
+  txtfile = replace(zipfile, '.zip', '.txt')
+  download.file(URL, zipfile)
+  data <- read.table(unzip(zipfile))
+}
+
+#setwd("RawData")
+
+# Download all data that exists between 3rd January 2001 and 14th May 2016 inclusive
+downloadDates = format(seq(as.Date("2001/01/03"), as.Date("2016/05/14"), "days"), 
+                       format="%Y/%m/%d%m%y")
+# Set download URL
+downloadURL = paste('http://www.forexite.com/free_forex_quotes/', downloadDates, '.zip', sep='')
+
+# Start Download
+for (i in downloadURL) {
+  print(i)
+  tryCatch({
+    getFiles(i)
+  }, error=function(e){})
+}
+```
+
+# Step 2 - Extract the EURGBP data and merge into one file
+
+The downloaded files contain a number of currency pairs.Since I was only interested in the EUR / GBP I needed to extract the lines that started with EURGBP. I did so using the script below.
+
+```{r eval=FALSE}
+library(dplyr)
+
+setwd("RawData")
+
+# We are only interested in *.txt files
+myFiles <- list.files(pattern = ".txt") 
+
+# Create empty dataframe
+df <- data.frame(V2 = (character()),
+                 V3 = character(), 
+                 V4 = character(),
+                 V5 = character(),
+                 V6 = character(),
+                 V7 = character()
+                 
+) 
+
+# Read tge data from the files into the dataframe
+for (f in myFiles) {
+  tryCatch({
+    if (file.size(f) > 0){
+      df2 = read.csv(f, skip=1, header=FALSE, colClasses=c('character'))
+      df2 = filter(df2, V1 == 'EURGBP') %>% select(-V1)
+      df = rbind_list(df, df2)
+    }
+  }, error = function(err) {
+    print(paste(f, ' : ', err))
+  })
+}
+
+write.table(df, '../Data/EURGBP.csv', row.names = FALSE, col.names = c('DATE', 'TIME', 'OPEN', 'HIGH', 'LOW', 'CLOSE'), quote = FALSE, sep=",")
+```
+
+# Step 3 - Data Preparation
+
+The data in EURGBP.csv contained a separate DATE and TIMe column. The data is a weakly regular time series i.e. there was some missing data.However the missing data was due to the FOREX market being closed so in reality the data wasn't missing. Converting the data to a Time Series object in R created a strictly regular time series and this is what was used in the analysis.
+
+```{r echo=TRUE}
+setwd("Data")
+
+#The below produces an error
+#install.packages('ggfortify')
+
+#install.packages("devtools")
+#library(devtools)
+
+#install_github('sinhrks/ggfortify')
+library(ggfortify)
+
+#install.packages('xts')
+library(xts)
+
+#install.packages('forecast')
+library(forecast)
+
+# read the data
+EURGBP = read.csv("EURGBP.csv", colClasses=c(rep("character", 2), rep("numeric", 4)))
+datetime <- as.POSIXct(paste(EURGBP$DATE, EURGBP$TIME), format = "%Y%m%d %H%M%OS")
+EURGBP = EURGBP[c(3:6)]
+summary(EURGBP)
+
+# Make sure ordering is correct and convert to daily
+EURGBP.xt <- xts(x = EURGBP, order.by = datetime)
+EURGBP.xt.daily = to.daily(EURGBP.xt)
+
+names(EURGBP.xt.daily) = c('Open', 'High', 'Low', 'Close')
+head(EURGBP.xt.daily)
+tail(EURGBP.xt.daily)
+
+# Plot the multi-variate time series
+pallet = c('red', 'blue', 'green', 'orange')
+autoplot(EURGBP.xt.daily, ts.colour = 'variable', main = 'EURGBP prices') + scale_colour_manual(values=pallet)
+
+# Check if data is weakly or strictly regular
+is.regular(EURGBP.xt.daily)
+is.regular(EURGBP.xt.daily, strict = TRUE)
+
+# Convert data to Time Series for analysis 
+EURGBP.ts.daily = ts(EURGBP.xt.daily, names=c('Open', 'High', 'Low', 'Close'))
+is.regular(EURGBP.ts.daily, strict = TRUE)
+
+head(EURGBP.ts.daily)
+tail(EURGBP.ts.daily)
+
+# Focus on closing prices
+EURGBP.price = EURGBP.ts.daily[,'Close']
+
+autoplot(as.zoo(EURGBP.price), ts.colour = 'blue') +
+  ggtitle('EURGBP Closing Prices') + xlab('Time Index') + ylab('price')
+
+# Split the time series into Training and Testing
+EURGBP.training = window(EURGBP.price, 1, 3000)
+EURGBP.test = window(EURGBP.price, 3000)
+```
+
+# Step 4 - Plot Data and examine
+
+A stationary time series is one whose statistical properties such as mean, variance, autocorrelation, etc. are all constant over time. The stationarized series can be prediced as the properties will be the same in the future as they have been in the past.
+
+The Autocorrelation Function (ACF) and the Kwiatkowski-Phillips-Schmidt-Shin (KPSS) test was used to check for stationarity.
+
+Based on the KPSS p-value stated below, the hypothesis of stationarity is rejected.In addition, the ACF plot shows a slow linear decay, indicative of a non-stationary time series. 
+
+```{r echo=TRUE}
+autoplot(as.zoo(EURGBP.training), ts.colour = 'blue') +
+  ggtitle('Training Data') + xlab('Time Index') + ylab('Closing Price')
+
+Acf(EURGBP.training)
+
+tseries::kpss.test(EURGBP.training)
+
+# Check - How many differences do we need to take 
+ndiffs(EURGBP.training)
+
+#The below produces an error as the data is not seasonal 
+#nsdiffs(EURGBP.training)
+```
+
+# Step 5 - Transform the data and examine
+
+Based on the KPSS p-value stated below, the hypothesthat that the time series is stationarity is rejected.In addition, the ACF plot shows a slow linear decay, indicative of a non-stationary time series. 
+
+```{r echo=TRUE}
+# Use BoxCox to transform the data
+lambda = forecast::BoxCox.lambda(EURGBP.training,lower=-2)
+lambda
+transformedPrices = forecast::BoxCox(EURGBP.training, lambda)
+
+# Train the data
+autoplot(as.zoo(transformedPrices), ts.colour = 'blue') +
+  ggtitle('Training Data') + xlab('Time Index') + ylab('transformed Closing Price')
+
+Acf(transformedPrices)
+
+tseries::kpss.test(transformedPrices)
+
+# Check - How many differences do we need to take 
+ndiffs(transformedPrices)
+
+#The below produces an error as the data is not seasonal 
+#nsdiffs(transformedPrices)
+```
+
+# Step 6 - Take 1st differences of the transformed data
+
+Based on the KPSS p-value stated below, the hypothesthat that the time series is stationarity is not rejected.In addition, The ACF plot also indicates a stationary time series.
+
+```{r echo=TRUE}
+diffPrices = diff(transformedPrices)
+autoplot(as.zoo(diffPrices), ts.colour = 'blue') +
+  ggtitle('First Difference Training Data') + xlab('Time Index') + ylab('transformed Closing Price')
+
+Acf(diffPrices)
+
+tseries::kpss.test(diffPrices)
+
+summary(diffPrices)
+```
+
+# Step 7 - Model Identification and Estimation
+
+The Autocorrelation Function (ACF) and Partial Autocorrelation Function (PACF) of the stationary series now need to be examined o estimate the ARIMA(p,d,q) model. 
+
+It should be noted that we can use auto.arima in R to give an estimate of the model.
+
+The d in ARIMA(p,d,q) stands for the number of times the data had to be differenced to become to stationary. In this case d = 1.
+
+The p in ARIMA(p,d,q) measures the order of the autoregressive component. The time-series has an autoregressive order of 1, called AR(1), then we should see only the first partial autocorrelation coefficient as significant. However this is not the case
+
+Generally, PACF will have significant correlations up to lag p, and will quickly drop to near zero values after lag p. Further work is needed.
+
+```{r echo=TRUE}
+auto.arima(transformedPrices)
+
+pacf(diffPrices)
+
+# Use acf rather tha Acf
+acf(diffPrices)
+```
+
+## Incorporate lags in differenced data
+
+```{r echo=TRUE}
+diffPrices = diff(transformedPrices, lag = 2, diff = 1)
+
+pacf(diffPrices)
+
+# Use acf rather tha Acf
+acf(diffPrices)
+
+# Increase maximum order
+auto.arima(transformedPrices, approximation=FALSE, stepwise=FALSE, max.order=15)
+```
+
+The auto.arima results above indicate that ARIMA(p = 3, d = 1, q = 2) might be a best fit (it has lowest (AICc value). Try one more lag to  verify that this is feasible.
+
+```{r echo=TRUE}
+diffPrices = diff(transformedPrices, lag = 3, diff = 1)
+
+pacf(diffPrices)
+
+# Use acf rather tha Acf
+acf(diffPrices)
+```
+
+# Step 7 - Forecasting
+
+Apply the model to the Test set.
+
+```{r echo=TRUE}
+testTransformedPrices = forecast::BoxCox(EURGBP.test, lambda)
+
+# Model
+transformedPrices.fit <- Arima(transformedPrices, c(3,1,2))
+ggtsdiag(transformedPrices.fit)
+
+
+# Apply model to test
+testTransformedPrices.fit = Arima(testTransformedPrices, model=transformedPrices.fit)
+ggtsdiag(testTransformedPrices.fit)
+
+EURGBP.transformed = cbind(testTransformedPrices, fitted(testTransformedPrices.fit))
+colnames(EURGBP.transformed) = c('Actual', 'Predicted')
+
+pallet = c('red', 'blue')
+autoplot(EURGBP.transformed, ts.colour = 'variable', main = 'EURGBP prices') +
+  scale_colour_manual(values=pallet) +
+  xlab('Time Index') + ylab('Transformed Closing Price')
+```
+
+## Check untransformed data
+
+```{r echo=TRUE}
+# Untransform the fitted values
+fittedPrices = forecast::InvBoxCox(fitted(testTransformedPrices.fit), lambda)
+
+EURGBP.test.prices = cbind(EURGBP.test, fittedPrices)
+colnames(EURGBP.test.prices) = c('Actual', 'Predicted')
+
+pallet = c('red', 'blue')
+autoplot(EURGBP.test.prices, ts.colour = 'variable', main = 'EURGBP prices') +
+  scale_colour_manual(values=pallet) +
+  xlab('Time Index') + ylab('Closing Prices')
+```
