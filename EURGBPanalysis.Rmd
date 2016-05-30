@@ -41,7 +41,7 @@ Regression Analysis, used in trend analysis, is the study of relationships among
 
 Forecasting and extrapolation from present values to the future values is not a function of regression analysis. To predict the future time series analysis is used.
 
-The least-squares method is the most common predictive function, and it calculates the minimum average squared deviations between the points and the estimated function. However maximimising Log-Likelihoods and minimising AIcc (Akaike information criterion) is also used.
+The least-squares method is the most common predictive function, and it calculates the minimum average squared deviations between the points and the estimated function. However maximimising Log-Likelihoods and minimising AIcc (Akaike information criterion) are also used.
 
 
 # Analysis Steps
@@ -268,7 +268,7 @@ acf(diffPrices)
 
 ### Increase lags in differenced data
 
-The above differened data uses a lag of 1 i.e. the difference is taken of 2 consecutive data points. For a log of 2, the differences between the third and the first value, between the fourth and the second value, between the fifth and the third value etc. are calculated. 
+The above differened data uses a lag of 1 i.e. the difference is taken of 2 consecutive data points. For a lag of 2, the differences between the third and the first value, between the fourth and the second value, between the fifth and the third value etc. are calculated. 
 
 ```{r echo=TRUE}
 diffPrices = diff(transformedPrices, lag = 2, diff = 1)
@@ -306,7 +306,7 @@ AIC(Arima(transformedPrices, c(3,1,2)),
 
 It should be noted that the plots indicate a very high-ordered model. However, it is possible for an AR term and an MA term to cancel each other's effects, even though both may appear significant in a model.
 
-## Step 7 - Forecasting
+## Step 8 - Forecasting
 
 Apply one step forecasting of the model to the Test set. The test data set is modelled extremely well and errors approximately match the errors in the Training set.
 
